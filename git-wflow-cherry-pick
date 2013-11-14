@@ -1,0 +1,93 @@
+#!/usr/bin/env perl
+package GitWorkflow::cherrypick;
+
+use v5.10;
+use File::Basename;
+our $SCRIPT_DIR = dirname(__FILE__);
+require "$SCRIPT_DIR/gitwflow-common";
+
+GitWorkflow::Common->import();
+
+sub run {
+    my ( $class, $base, @commit_ids ) = @_;
+
+    unless ( verify_base($base) ) {
+        usage();
+        die "incorrect arguments to 'git wflow cherry-pick'";
+    }
+    unless ( scalar @commit_ids ) {
+        usage();
+        die "you must supply commit ids to 'git wflow cherry-pick'";
+    }
+    init();
+    my $base_branch = branch_from_base($base);
+    `git checkout $base_branch`;
+    `git pull --rebase`;
+    my @processed;
+    my @remaining = @commit_ids;
+    foreach my $id (@commit_ids) {
+        shift @remaining;
+        my $result = `git cherry-pick $id 2>&1`;
+        if ( $result =~ /fatal: bad revision/ ) {
+            die "'$id' is not a valid commit identifier";
+        }
+        elsif ( $result =~ /error: could not apply/ ) {
+            my $msg = "'$id' applied with conflicts. Fix before proceeding.\n";
+            if (@remaining) {
+                $msg .= "Note: commits must be applied in the same order they were created.\n";
+                $msg .= "Continue with: git wflow $base " . join( ' ', @remaining ) . "\n";
+            }
+            $msg .= "Do a 'git reset' to last commit before cherrypicking to start over";
+            $msg .= "\n$result";
+            die $msg;
+        }
+        elsif ( $result =~ /\[$base_branch [a-f0-9]{7}\]/ ) {
+            # matches this: [trunk 6349ccd]
+            say "'$id' applied successfully";
+            push @processed, $id;
+        }
+        elsif ( $result =~ /previous cherry-pick is now empty/ ) {
+            my $msg =
+                "'$id' when applied turned into an empty commit, probably due to conflict resolution.";
+            $msg .= "Please do 'git commit --allow-empty' or do 'git reset'.\n";
+            $msg .= "Continue with: git wflow $base " . join( ' ', @remaining ) . "\n"
+                if @remaining;
+            die $msg;
+        }
+    }
+    my $pushed = 0;
+    if ( @processed > 0 ) {
+        say "Would you like to push? (y/n)";
+        my $answer = <STDIN>;
+        chomp($answer);
+        if ( $answer eq 'y' || $answer eq 'Y' ) {
+            my $remote = remote();
+            say "pushing...";
+            `git push $remote $base_branch`;
+            $pushed = 1;
+            say "done pushing";
+        }
+    }
+    instructions(\@commit_ids, $pushed);
+}
+
+sub usage {
+    say "usage: git wflow cherry-pick [base branch] [commit ids]";
+    say "       git wflow cherry-pick " . develop_branch() . " [commit ids]";
+    say "       git wflow cherry-pick " . release_branch_prefix() . " [commit ids]";
+    say "       git wflow cherry-pick " . production_branch_prefix() . " [commit ids]";
+}
+
+sub instructions {
+    my ( $commit_ids, $pushed ) = @_;
+    my $current_branch = current_branch();
+    say "";
+    say "Summary of actions:";
+    say "- " . scalar @$commit_ids . " commit(s) cherry-picked ";
+    say "- Commits pushed to remote" if $pushed;
+    say "- You are now on branch '$current_branch'";
+    say "";
+}
+
+
+1;

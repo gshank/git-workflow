@@ -1,0 +1,50 @@
+#!/usr/bin/env perl
+package GitWorkflow::branch;
+
+use v5.10;
+use File::Basename;
+our $SCRIPT_DIR = dirname(__FILE__);
+require "$SCRIPT_DIR/gitwflow-common";
+
+GitWorkflow::Common->import();
+
+sub run {
+    my ( $class, $base, $branch_name ) = @_;
+
+    unless ( verify_base($base) && $branch_name ) {
+        usage();
+        die "incorrect arguments to 'git wflow branch'";
+    }
+    init();
+    my $base_branch = branch_from_base($base);
+    `git checkout $base_branch`;
+    `git pull --rebase`;
+    my $full_branch_name = full_branch_name( $base, $branch_name );
+    require_branch_absent($full_branch_name);
+    `git checkout -b $full_branch_name`;
+    instructions( $base_branch, $full_branch_name );
+}
+
+sub usage {
+    say "usage: git wflow branch [base branch] [branch name]";
+    say "       git wflow branch " . develop_branch() . " <branch_name>";
+    say "       git wflow branch " . release_branch_prefix() . " <branch_name>";
+    say "       git wflow branch " . production_branch_prefix() . " <branch_name>";
+}
+
+sub instructions {
+    my ( $base_br, $branch ) = @_;
+    say "";
+    say "Summary of actions:";
+    say "- A new branch '$branch' was created, based on '$base_br'";
+    say "- You are now on branch '$branch'";
+    say "";
+    say "Follow-up actions:";
+    say "- Start committing your code";
+    say "- When done, run:";
+    say "";
+    say "     git wflow finish";
+    say "";
+}
+
+1;

@@ -1,0 +1,40 @@
+#!/usr/bin/env perl
+
+use v5.10;
+use Cwd ('abs_path');
+use File::Basename;
+
+our $SCRIPT_DIR = dirname(__FILE__);
+
+main();
+
+sub usage {
+    say "usage: git wflow <subcommand>";
+    say "";
+    say "Available subcommands are:";
+    say "   init          Initialize a new git repo with support for the branching model.";
+    say "   branch        create branch for...";
+    say "   cherry-pick   patch your branch";
+    say "";
+    say "Try 'git wflow <subcommand> help' for details.";
+}
+
+sub main {
+    if ( scalar @ARGV == 0 ) {
+        usage();
+        exit 1;
+    }
+    my $cmd = shift @ARGV;
+    eval { require "$SCRIPT_DIR/git-wflow-$cmd"; };
+    if ($@) {
+        say "git workflow command '$cmd' not found";
+        usage();
+        exit;
+    }
+    $cmd =~ s/-//g;
+    my $cmd_class = "GitWorkflow::$cmd";
+    $cmd_class->run(@ARGV);
+
+}
+
+exit;

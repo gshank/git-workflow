@@ -1,0 +1,19 @@
+#!/usr/bin/env perl
+package GitWorkflow::test;
+
+use v5.10;
+use File::Basename;
+our $SCRIPT_DIR = dirname(__FILE__);
+require "$SCRIPT_DIR/gitwflow-common";
+
+GitWorkflow::Common->import();
+
+sub run {
+    my ( $class, @args ) = @_;
+
+    init();
+
+    require_branch_absent('feature/my_test');
+}
+
+1;

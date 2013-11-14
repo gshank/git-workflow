@@ -1,0 +1,338 @@
+#!/usr/bin/env perl
+package GitWorkflow::Common;
+
+use v5.10;
+use Exporter;
+our @ISA    = ('Exporter');
+our @EXPORT = (
+    'init',                        'require_git_repo',
+    'load_settings',               'print_settings',
+    'release_branch_prefix',       'release_branch',
+    'release_branch_exists',       'develop_branch',
+    'production_branch_prefix',    'production_branch',
+    'remote',                      'print_settings',
+    'verify_base',                 'branch_from_base',
+    'current_branch',              'full_branch_name',
+    'base_and_branch_from_current','require_branch_absent',
+    'git_all_branches',            'require_clean_working_tree',
+    'require_local_branch_exits',
+);
+
+our $DOT_GIT_DIR;
+our $RELEASE_VERSION;
+our $PRODUCTION_BRANCH_PREFIX;
+our $PRODUCTION_BRANCH;
+our $RELEASE_BRANCH_PREFIX;
+our $RELEASE_BRANCH;
+our $RELEASE_BRANCH_EXISTS;
+our $DEVELOP_BRANCH;
+our $REMOTE;
+our $REPO;
+
+sub init {
+    require_git_repo();
+    require_clean_working_tree();
+    print "current branch => " . current_branch();
+    load_settings();
+    print_settings();
+}
+
+sub require_git_repo {
+    if ( !`git rev-parse --git-dir` ) {
+        die "fatal: Not a git repository";
+    }
+}
+
+sub release_version {
+    # develop version is stored in etc/version.txt in the develop branch: TODO: allow config
+    return $RELEASE_VERSION if defined $RELEASE_VERSION;
+    print "fetching " . release_branch_prefix() . " version...";
+    my $remote    = remote();
+    my $devbranch = develop_branch();
+    my $cmd       = "git show $remote/$devbranch:etc/version.txt";
+    my $version   = `$cmd`;
+    return '' unless $version;
+    $version         = $version - 1;
+    $RELEASE_VERSION = $version;
+    say "fetched ($version)";
+    return $RELEASE_VERSION;
+}
+
+sub release_branch_exists {
+    return $RELEASE_BRANCH_EXISTS if defined $RELEASE_BRANCH_EXISTS;
+
+    my $rel_prefix = release_branch_prefix();
+    my $rel_branch = release_branch();
+
+    print "checking that release branch exists...";
+    my $repo       = repo();
+    my @heads      = `git ls-remote --heads $repo`;
+    my @paths      = map { die unless m{.+refs/heads/(.+)$}; $1; } @heads;
+    my @rel_paths  = grep m{^$rel_prefix/\d+$}, @paths;
+
+    if ( scalar @rel_paths > 1 ) {
+        die "Error: multiple $rel_prefix branches found: " . join( ',', @rel_paths );
+    }
+    elsif ( scalar @rel_paths == 1 ) {
+        if ( $rel_paths[0] eq $rel_branch ) {
+            $RELEASE_BRANCH_EXISTS = 1;
+        }
+        else {
+            die "unexpected $rel_prefix branch. expected $rel_branch; found " . $rel_paths[0];
+        }
+    }
+    else {
+        $RELEASE_BRANCH_EXISTS = 0;
+    }
+    say( $RELEASE_BRANCH_EXISTS ? 'yes' : 'no' );
+    return $RELEASE_BRANCH_EXISTS;
+}
+
+sub release_branch {
+    $RELEASE_BRANCH = release_branch_prefix() . '/' . release_version();
+}
+
+sub release_branch_prefix {
+    return $RELEASE_BRANCH_PREFIX if defined $RELEASE_BRANCH_PREFIX;
+    $RELEASE_BRANCH_PREFIX = `git config --get wflow.branch.release` || 'staging';
+    chomp($RELEASE_BRANCH_PREFIX);
+    return $RELEASE_BRANCH_PREFIX;
+}
+
+sub valid_release_branch {
+    if ( release_branch_exists() ) {
+        return release_branch();
+    }
+    die "release branch " . release_branch() . " does not exist";
+}
+
+sub dot_git_dir {
+    return $DOT_GIT_DIR if defined $DOT_GIT_DIR;
+    $DOT_GIT_DIR = `git rev-parse --git-dir`;
+    chomp($DOT_GIT_DIR);
+    return $DOT_GIT_DIR;
+}
+
+sub remote {
+    return $REMOTE if defined $REMOTE;
+    $REMOTE = `git config --get wflow.other.remote` || 'origin';
+    chomp($REMOTE);
+    return $REMOTE;
+}
+
+sub repo {
+    return $REPO if defined $REPO;
+    my $remote = remote();
+    $REPO = `git config --get remote.$remote.url`;
+    return $REPO;
+}
+
+sub develop_branch {
+    return $DEVELOP_BRANCH if defined $DEVELOP_BRANCH;
+    $DEVELOP_BRANCH = `git config --get wflow.branch.develop` || 'trunk';
+    chomp($DEVELOP_BRANCH);
+    return $DEVELOP_BRANCH;
+}
+
+sub production_version {
+    return $PRODUCTION_VERSION if defined $PRODUCTION_VERSION;
+
+    say "determining $PRODUCTION_BRANCH_PREFIX version";
+    my $repo   = repo();
+    my $result = `git ls-remote --heads $repo refs/heads/$PRODUCTION_BRANCH_PREFIX/\*`;
+    # sometimes github is down, sometimes we just don't have a network up
+    return $PRODUCTION_VERSION;
+}
+
+sub production_branch_prefix {
+    return $PRODUCTION_BRANCH_PREFIX if defined $PRODUCTION_BRANCH_PREFIX;
+    $PRODUCTION_BRANCH_PREFIX = `git config --get wflow.branch.production` || 'production';
+    chomp($PRODUCTION_BRANCH_PREFIX);
+    return $PRODUCTION_BRANCH_PREFIX;
+}
+
+sub production_branch {
+    # for now, just return prefix.
+    return production_branch_prefix();
+}
+
+sub valid_production_branch {
+    return production_branch();
+}
+
+sub load_settings {
+    dot_git_dir();
+    remote();
+    develop_branch();
+    release_branch_prefix();
+    production_branch_prefix();
+}
+
+sub remote_settings {
+    my $remote = remote();
+    print "fetching remote $remote...";
+    my $fetch_remote = `git fetch $remote 2>&1`;
+    if ( $fetch_remote =~ /Could not read/ ) {
+        die "Repository does not have a remote '$remote'";
+    }
+    else {
+        say "fetched.";
+    }
+    release_version();
+    release_branch();
+    release_branch_exists();
+}
+
+sub print_settings {
+    say "remote | develop | release | production ";
+    say "$REMOTE | $DEVELOP_BRANCH | $RELEASE_BRANCH_PREFIX/<n> | $PRODUCTION_BRANCH_PREFIX";
+}
+
+sub verify_base {
+    my $base = shift;
+
+    return 0 unless length $base;
+    my $dev  = develop_branch();
+    my $rel  = release_branch_prefix();
+    my $prod = production_branch_prefix();
+    unless ( $base eq $dev || $base eq $rel || $base eq $prod ) {
+        say "'$base' is not one of [$dev, $rel, $prod]";
+        return 0;
+    }
+    return 1;
+}
+
+sub branch_from_base {
+    my $base = shift;
+    verify_base($base);
+    my $base_branch = '';
+    if ( $base eq develop_branch() ) {
+        $base_branch = develop_branch();
+    }
+    elsif ( $base eq release_branch_prefix() ) {
+        $base_branch = valid_release_branch();
+    }
+    elsif ( $base eq production_branch_prefix() ) {
+        $base_branch = valid_production_branch();
+    }
+    return $base_branch;
+}
+
+sub require_clean_working_tree {
+
+    if ( system('git diff --no-ext-diff --ignore-submodules --quiet --exit-code') ) {
+        die "fatal: Working tree contains unstaged changes. Aborting.";
+    }
+    elsif ( system('git diff-index --cached --ignore-submodules --quiet --exit-code HEAD --') )
+    {
+        die "fatal: Index contains uncommitted changes. Aborting.";
+    }
+    else {
+        say "no unstaged or uncommitted changes";
+    }
+}
+
+sub current_branch {
+    my $branch = `git branch --no-color | grep '^\* ' | grep -v 'no branch' | sed 's/^* //g'`;
+    chomp($branch);
+    return $branch;
+}
+
+sub develop_work_prefix {
+    return 'feature';
+}
+
+sub release_work_prefix {
+    return release_branch_prefix() . "_fix";
+}
+
+sub production_work_prefix {
+    return production_branch_prefix() . "_fix";
+}
+
+# TODO: config for these branch prefix names
+sub full_branch_name {
+    my ( $base, $branch_name ) = @_;
+
+    my $branch_prefix;
+    if ( $base eq develop_branch() ) {
+        $branch_prefix = develop_work_prefix();
+    }
+    elsif ( $base eq release_branch_prefix() ) {
+        $branch_prefix = release_work_prefix();
+    }
+    elsif ( $base eq production_branch_prefix() ) {
+        $branch_prefix = production_work_prefix();
+    }
+    return "$branch_prefix/$branch_name";
+}
+
+# determine 'base' and 'branch_name' for current branch; not valid for dev/rel/prod branches
+sub base_and_branch_from_current {
+    my $current_branch = current_branch();
+
+    # check that we're not on a base branch
+    my $dev_br  = develop_branch();
+    my $rel_br  = release_branch();
+    my $prod_br = production_branch();
+    if ( $current_branch eq $dev_br ||
+        $current_branch eq $rel_br ||
+        $current_branch eq $prod_br )
+    {
+        die "action not valid on branch '$current_branch'";
+    }
+
+    my ( $work_prefix, $branch_name ) = split( '/', $current_branch );
+    unless ($branch_name) {
+        die "cannot determine base branch for '$current_branch'";
+    }
+    my $dev_work  = develop_work_prefix();
+    my $rel_work  = release_work_prefix();
+    my $prod_work = production_work_prefix();
+    my $base;
+    if ( $work_prefix eq $dev_work ) {
+        $base = develop_branch();
+    }
+    elsif ( $work_prefix eq $rel_work ) {
+        $base = release_branch_prefix();
+    }
+    elsif ( $work_prefix eq $prod_work ) {
+        $base = production_branch_prefix();
+    }
+    else {
+        die "cannot determine base branch for '$current_branch'";
+    }
+    return ( $base, $branch_name );
+}
+
+sub require_branch_absent {
+    my $branch = shift;
+    if ( grep { $_ eq $branch } git_all_branches() ) {
+        die "Branch '$branch' already exists. Pick another name.";
+    }
+}
+
+sub git_all_branches {
+    my @branches = `( git branch --no-color; git branch -r --no-color) | sed 's/^[* ] //'`;
+    foreach my $branch (@branches) {
+        chomp($branch);
+    }
+    return @branches;
+}
+
+sub git_local_branches {
+    my @branches = `git branch --no-color | sed 's/^[* ] //'`;
+    foreach my $branch (@branches) {
+        chomp($branch);
+    }
+    return @branches;
+}
+
+sub require_local_branch_exists {
+    my $branch = shift;
+    unless ( grep { $_ eq $branch } git_local_branches() ) {
+        die "Branch '$branch' does not exists.";
+    }
+}
+
+1;

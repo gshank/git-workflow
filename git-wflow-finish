@@ -1,0 +1,56 @@
+#!/usr/bin/env perl
+package GitWorkflow::finish;
+
+use v5.10;
+use File::Basename;
+our $SCRIPT_DIR = dirname(__FILE__);
+require "$SCRIPT_DIR/gitwflow-common";
+
+GitWorkflow::Common->import();
+
+sub run {
+    my ( $class, $base, $branch_name ) = @_;
+
+    my $from_current = 0;
+    unless ( $base && $branch_name ) {
+        ( $base, $branch_name ) = base_and_branch_from_current();
+        $from_current = 1;
+    }
+    my $full_branch_name = full_branch_name( $base, $branch_name );
+    unless ( $from_current ) {
+        require_local_branch_exists($full_branch_name);
+    }
+    init();
+    my $base_branch = branch_from_base($base);
+    `git checkout $base_branch`;
+    `git pull --rebase`;
+    my $result = `git merge --no-ff $full_branch_name`;
+    say $result;
+    my $remote = remote();
+    `git push $remote $base_branch`;
+    instructions( $base_branch, $full_branch_name );
+}
+
+sub usage {
+    say "usage: git wflow branch [base branch] [branch name]";
+    say "       git wflow branch " . develop_branch() . " [branch_name]";
+    say "       git wflow branch " . release_branch_prefix() . " [branch_name]";
+    say "       git wflow branch " . production_branch_prefix() . " [branch_name]";
+}
+
+sub instructions {
+    my ( $base_branch, $branch_name ) = @_;
+    my $remote = remote();
+    say "";
+    say "Summary of actions:";
+    say "- Latest objects have been fetched from '$remote'";
+    say "- '$branch_name' has been merged into '$base_branch'";
+    say "- '$base_branch' has been pushed to '$remote'";
+    say "- '$branch_name' is still available";
+    say "";
+    say "You may want to delete '$branch_name'";
+    say "Current branch => " . current_branch();
+
+}
+
+1;
