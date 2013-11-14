@@ -1,0 +1,73 @@
+git workflow
+============
+
+A collection of Git extensions to provide high-level repository operations
+for the CampusExplorer workflow.
+
+Install
+-------
+
+    (you can customize the install location by editing 'prefix' inside the Makefile)
+
+      <pre>
+      git clone git@github.com:campus-explorer/git-workflow.git
+      cd git-workflow
+      sudo make install
+      </pre>
+
+Production
+----------
+
+Patch with branch:
+
+<pre>
+git wflow branch production myfix
+# make some edits on the production\_fix/myfix branch
+# commit the edits
+git wflow finish
+</pre>
+
+Patch with cherry-picks:
+
+<pre>
+git wflow cherry-pick production <commit_id> <commit_id> ...
+</pre>
+
+Staging
+-------
+
+Patch with branch:
+
+<pre>
+git wflow branch staging somefix
+# make edits on the staging\_fix/somefix branch
+# commit the edits
+git wflow finish
+</pre>
+
+Patch with cherry-picks:
+
+<pre>
+git wflow cherry-pick staging <commit_id> <commit_id> ...
+</pre>
+
+Trunk
+-----
+
+Create a branch:
+
+<pre>
+git wflow branch trunk my\_branch
+# make edits on the feature/my\_branch branch
+# commit and test
+git wflow finish
+</pre>
+
+Patch with cherry-picks:
+
+<pre>
+git wflow cherry-pick trunk <commit_id> <commit_id> ...
+</pre>
+
+
+
