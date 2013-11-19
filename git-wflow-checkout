@@ -1,0 +1,21 @@
+#!/usr/bin/env perl
+package GitWorkflow::checkout;
+
+use v5.10;
+use File::Basename;
+our $SCRIPT_DIR = dirname(__FILE__);
+require "$SCRIPT_DIR/gitwflow-common";
+
+GitWorkflow::Common->import();
+
+sub run {
+    my ( $class, $base ) = @_;
+
+    init();
+
+    my $branch = branch_from_base($base);
+    `git checkout $branch`;
+
+}
+
+1;

@@ -35,6 +35,8 @@ sub init {
     print "current branch => " . current_branch();
     load_settings();
     print_settings();
+    my $remote = remote();
+    `git fetch $remote`;
 }
 
 sub require_git_repo {

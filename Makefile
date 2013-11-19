@@ -9,6 +9,7 @@ SCRIPT_FILES=gitwflow-common
 SCRIPT_FILES+=git-wflow-test
 SCRIPT_FILES+=git-wflow-branch
 SCRIPT_FILES+=git-wflow-cherry-pick
+SCRIPT_FILES+=git-wflow-checkout
 SCRIPT_FILES+=git-wflow-finish
 
 all:
