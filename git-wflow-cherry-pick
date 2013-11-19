@@ -27,7 +27,7 @@ sub run {
     my @remaining = @commit_ids;
     foreach my $id (@commit_ids) {
         shift @remaining;
-        my $result = `git cherry-pick $id 2>&1`;
+        my $result = `git cherry-pick -x $id 2>&1`;
         if ( $result =~ /fatal: bad revision/ ) {
             die "'$id' is not a valid commit identifier";
         }

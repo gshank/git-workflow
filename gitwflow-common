@@ -15,7 +15,7 @@ our @EXPORT = (
     'current_branch',              'full_branch_name',
     'base_and_branch_from_current','require_branch_absent',
     'git_all_branches',            'require_clean_working_tree',
-    'require_local_branch_exits',
+    'require_local_branch_exits',  'format_cherry_commits',
 );
 
 our $DOT_GIT_DIR;
@@ -32,7 +32,7 @@ our $REPO;
 sub init {
     require_git_repo();
     require_clean_working_tree();
-    print "current branch => " . current_branch();
+    say "current branch => " . current_branch();
     load_settings();
     print_settings();
     my $remote = remote();
@@ -335,6 +335,20 @@ sub require_local_branch_exists {
     unless ( grep { $_ eq $branch } git_local_branches() ) {
         die "Branch '$branch' does not exists.";
     }
+}
+
+sub format_cherry_commits {
+    my @commit_lines = @_;
+
+    my $string = '';
+    my @commits;
+    foreach my $commit_line (@commit_lines) {
+        my ($flag, $commit_id) = $commit_line =~ /^([+-]) ([a-f0-9]+)/;
+        if ( $flag = '+' ) {
+            push @commits, substr($commit_id, 0, 7);
+        }
+    }
+    return join(' ', @commits);
 }
 
 1;
