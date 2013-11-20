@@ -34,8 +34,9 @@ sub init {
     require_clean_working_tree();
     say "current branch => " . current_branch();
     load_settings();
-    print_settings();
+    # print_settings();
     my $remote = remote();
+    `git remote prune $remote`;
     `git fetch $remote`;
 }
 
@@ -139,10 +140,23 @@ sub develop_branch {
 sub production_version {
     return $PRODUCTION_VERSION if defined $PRODUCTION_VERSION;
 
-    say "determining $PRODUCTION_BRANCH_PREFIX version";
+    my $prod_prefix = production_branch_prefix();
+    say "determining $prod_prefix version";
     my $repo   = repo();
-    my $result = `git ls-remote --heads $repo refs/heads/$PRODUCTION_BRANCH_PREFIX/\*`;
-    # sometimes github is down, sometimes we just don't have a network up
+    my @heads = `git ls-remote --heads $repo`;
+    my @paths      = map { die unless m{.+refs/heads/(.+)$}; $1; } @heads;
+    my @prod_versions  = map { /^$prod_prefix\/(\d+)/; $1; } grep m{^$prod_prefix/\d+$}, @paths;
+    @prod_versions = reverse sort{ $a <=> $b } @prod_versions;
+    my $prod_version = $prod_versions[0];
+    if ( release_branch_exists() ) {
+        die "production branch version is not one lower than release branch version"
+            if $prod_version != release_version() - 1;
+    }
+    else {
+        die "production version does not agree with version.txt"
+            if $prod_version != release_version();
+    }
+    $PRODUCTION_VERSION = $prod_version;
     return $PRODUCTION_VERSION;
 }
 
@@ -154,8 +168,9 @@ sub production_branch_prefix {
 }
 
 sub production_branch {
-    # for now, just return prefix.
-    return production_branch_prefix();
+    return $PRODUCTION_BRANCH if defined $PRODUCTION_BRANCH;
+    $PRODUCTION_BRANCH = production_branch_prefix() . "/" . production_version();
+    return $PRODUCTION_BRANCH;
 }
 
 sub valid_production_branch {
@@ -187,7 +202,7 @@ sub remote_settings {
 
 sub print_settings {
     say "remote | develop | release | production ";
-    say "$REMOTE | $DEVELOP_BRANCH | $RELEASE_BRANCH_PREFIX/<n> | $PRODUCTION_BRANCH_PREFIX";
+    say "$REMOTE | $DEVELOP_BRANCH | $RELEASE_BRANCH_PREFIX/<n> | $PRODUCTION_BRANCH_PREFIX<n>";
 }
 
 sub verify_base {
@@ -245,11 +260,13 @@ sub develop_work_prefix {
 }
 
 sub release_work_prefix {
-    return release_branch_prefix() . "_fix";
+    # TODO: from config?
+    return 'stgfix';
 }
 
 sub production_work_prefix {
-    return production_branch_prefix() . "_fix";
+    # TODO: from config?
+    return 'prodfix';
 }
 
 # TODO: config for these branch prefix names

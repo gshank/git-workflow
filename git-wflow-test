@@ -13,7 +13,7 @@ sub run {
 
     init();
 
-    require_branch_absent('feature/my_test');
+    say production_branch();
 }
 
 1;
